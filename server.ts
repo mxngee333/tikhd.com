@@ -164,8 +164,9 @@ function getYtDlpOptions(
   };
 
   if (isYouTube) {
-    if (playerClient && !base.extractorArgs) {
-      base.extractorArgs = `youtube:player_client=${playerClient}`;
+    const clientToUse = playerClient || "tv_embedded";
+    if (!base.extractorArgs) {
+      base.extractorArgs = `youtube:player_client=${clientToUse}`;
     }
     if (!ignoreCookies) {
       const cookieFile = getSanitizedCookieFile();
@@ -267,7 +268,7 @@ async function assembleYouTubeVideo(mediaUrl: string, quality: string = "1080"):
         noMtime: true,
         noCheckFormats: true,
         postprocessorArgs: "ffmpeg:-threads 0 -c copy -movflags +faststart"
-      }, false, null, true);
+      }, false, "tv_embedded", true);
 
       console.log(`[Download] Assembling YouTube HD video (attempt ${attempt}/${maxAttempts}): ${tempFilePath}`);
       try {
@@ -716,11 +717,18 @@ async function startServer() {
 
       if (isYouTube) {
         const tiers = [
-          { client: null, useCookies: false, useProxy: true },
-          { client: null, useCookies: true, useProxy: true },
-          { client: null, useCookies: true, useProxy: false },
-          { client: null, useCookies: false, useProxy: false },
-          { client: "android", useCookies: false, useProxy: false }
+          // Tier 1: SOCKS5 Webshare residential proxy pool with tv_embedded client (0 bot check, 40+ formats)
+          { client: "tv_embedded", useCookies: false, useProxy: true },
+          // Tier 2: SOCKS5 proxy with ios client
+          { client: "ios", useCookies: false, useProxy: true },
+          // Tier 3: SOCKS5 proxy with mweb client
+          { client: "mweb", useCookies: false, useProxy: true },
+          // Tier 4: SOCKS5 proxy with cookies if present
+          { client: "tv_embedded", useCookies: true, useProxy: true },
+          // Tier 5: Direct with tv_embedded
+          { client: "tv_embedded", useCookies: false, useProxy: false },
+          // Tier 6: Direct with ios
+          { client: "ios", useCookies: false, useProxy: false }
         ];
 
         let lastErr: any = null;
@@ -871,8 +879,8 @@ async function startServer() {
         res.setHeader("Content-Type", "audio/mpeg");
 
         console.log(`[Download] Streaming 160kbps MP3 audio via yt-dlp + FFmpeg...`);
-        const primaryOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio/best", output: "-" }, false, null);
-        const fallbackOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio/best", output: "-" }, true, "android");
+        const primaryOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio/best", output: "-" }, false, "tv_embedded", true);
+        const fallbackOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio/best", output: "-" }, true, "ios", true);
 
         return streamMediaWithFallback(mediaUrl, primaryOpts, fallbackOpts, res, "MP3", {
           transcodeToMp3: true,
@@ -885,8 +893,8 @@ async function startServer() {
         res.setHeader("Content-Disposition", makeContentDisposition(finalAudioFilename));
         res.setHeader("Content-Type", "audio/mp4");
 
-        const primaryOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio[ext=m4a]/bestaudio/best", output: "-" }, false, null);
-        const fallbackOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio[ext=m4a]/bestaudio/best", output: "-" }, true, "android");
+        const primaryOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio[ext=m4a]/bestaudio/best", output: "-" }, false, "tv_embedded", true);
+        const fallbackOpts = getYtDlpOptions(mediaUrl, { format: "bestaudio[ext=m4a]/bestaudio/best", output: "-" }, true, "ios", true);
 
         return streamMediaWithFallback(mediaUrl, primaryOpts, fallbackOpts, res, "M4A");
       }
@@ -1002,8 +1010,8 @@ async function startServer() {
       }
 
       console.log(`[Download] Streaming video [quality=${quality}] via yt-dlp pipe...`);
-      const primaryOpts = getYtDlpOptions(mediaUrl, { format: videoFormatStr, output: "-" }, false, null);
-      const fallbackOpts = getYtDlpOptions(mediaUrl, { format: `${videoFormatStr}/bestvideo+bestaudio/best`, output: "-" }, true, "android");
+      const primaryOpts = getYtDlpOptions(mediaUrl, { format: videoFormatStr, output: "-" }, false, "tv_embedded", true);
+      const fallbackOpts = getYtDlpOptions(mediaUrl, { format: `${videoFormatStr}/bestvideo+bestaudio/best`, output: "-" }, true, "ios", true);
 
       return streamMediaWithFallback(mediaUrl, primaryOpts, fallbackOpts, res, "Video");
 
