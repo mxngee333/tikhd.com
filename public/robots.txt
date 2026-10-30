@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+Allow: /icons/
+Allow: /favicon/
+Allow: /assets/
+
+Sitemap: https://tikhd.app/sitemap.xml

@@ -1,0 +1,6 @@
+{
+  "name": "SnapTik Clone - TikTok Video Downloader",
+  "description": "A high-performance TikTok video downloader utility with watermark removal, i18n support, and a sleek Bulma-based UI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
