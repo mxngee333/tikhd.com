@@ -137,6 +137,20 @@ function updateI18n() {
   if (langEl) langEl.textContent = langLabels[currentLang];
 }
 
+// Production Backend URL (Hetzner VPS / Coolify Universal Extraction Engine)
+const LIVE_BACKEND_URL = "https://api.vidoget.com";
+
+const getApiBase = (): string => {
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+     window.location.hostname === "127.0.0.1")
+  ) {
+    return "";
+  }
+  return LIVE_BACKEND_URL;
+};
+
 // ============================================================================
 // State & LocalStorage
 // ============================================================================
@@ -620,13 +634,23 @@ function attachHomeListeners() {
     if (pasteBtn) pasteBtn.disabled = true;
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch(`${getApiBase()}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: rawUrl })
       });
 
-      const data: MediaAnalysis = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      let data: MediaAnalysis;
+
+      if (contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.warn("[TIKHD] Non-JSON API response:", text.slice(0, 200));
+        throw new Error("Temporary stream extraction delay from server. Please retry in a few moments.");
+      }
+
       if (!response.ok || (data as any).error) {
         throw new Error((data as any).error || translations[currentLang].error_generic);
       }
@@ -760,7 +784,9 @@ function attachHomeListeners() {
     // TikTok Direct Download Button Listener
     const tiktokDirectBtn = document.getElementById("tiktokDirectBtn");
     tiktokDirectBtn?.addEventListener("click", () => {
-      const downloadEndpoint = `/api/download-file?url=${encodeURIComponent(data.downloadUrl!)}&title=${encodeURIComponent(data.title)}`;
+      const downloadEndpoint = data.downloadUrl?.startsWith("http")
+        ? data.downloadUrl
+        : `${getApiBase()}/api/download-file?url=${encodeURIComponent(data.downloadUrl!)}&title=${encodeURIComponent(data.title)}`;
       triggerBrowserDownload(downloadEndpoint, `tikhd_${Date.now()}.mp4`);
     });
 
@@ -794,13 +820,15 @@ function attachHomeListeners() {
       progressContainer?.classList.remove("hidden");
       progressContainer?.scrollIntoView({ behavior: "smooth", block: "center" });
 
-      fetch(`/api/prepare?url=${encodeURIComponent(url)}&quality=${encodeURIComponent(quality)}`).catch(() => {});
+      fetch(`${getApiBase()}/api/prepare?url=${encodeURIComponent(url)}&quality=${encodeURIComponent(quality)}`).catch(() => {});
 
       let pollCount = 0;
       const interval = setInterval(async () => {
         pollCount++;
         try {
-          const res = await fetch(`/api/status?url=${encodeURIComponent(url)}&quality=${encodeURIComponent(quality)}&format=${format}&title=${encodedTitle}`);
+          const res = await fetch(`${getApiBase()}/api/status?url=${encodeURIComponent(url)}&quality=${encodeURIComponent(quality)}&format=${format}&title=${encodedTitle}`);
+          const cType = res.headers.get("content-type") || "";
+          if (!cType.includes("application/json")) return;
           const statusData = await res.json();
 
           if (statusData.status === "ready") {
@@ -814,7 +842,10 @@ function attachHomeListeners() {
             if (percent) percent.textContent = "100%";
 
             setTimeout(() => {
-              triggerBrowserDownload(statusData.downloadUrl, statusData.filename || `tikhd_${Date.now()}.${format}`);
+              const finalDownloadUrl = statusData.downloadUrl?.startsWith("http")
+                ? statusData.downloadUrl
+                : `${getApiBase()}${statusData.downloadUrl}`;
+              triggerBrowserDownload(finalDownloadUrl, statusData.filename || `tikhd_${Date.now()}.${format}`);
               setTimeout(() => progressContainer?.classList.add("hidden"), 3000);
             }, 600);
           } else {
@@ -835,7 +866,7 @@ function attachHomeListeners() {
 
     } else {
       // Direct stream download for Audio (MP3/M4A), TikTok, Facebook, IG, Audiomack
-      const streamUrl = `/api/download?url=${encodeURIComponent(url)}&format=${format}&quality=${quality}&title=${encodedTitle}`;
+      const streamUrl = `${getApiBase()}/api/download?url=${encodeURIComponent(url)}&format=${format}&quality=${quality}&title=${encodedTitle}`;
       triggerBrowserDownload(streamUrl, `${decodeURIComponent(encodedTitle)}.${format}`);
     }
   }

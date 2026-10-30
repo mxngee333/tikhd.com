@@ -1,15 +1,4 @@
 {
-  "functions": {
-    "source": "functions",
-    "codebase": "default",
-    "ignore": [
-      "node_modules",
-      ".git",
-      "firebase-debug.log",
-      "firebase-debug.*.log",
-      "*.local"
-    ]
-  },
   "hosting": {
     "site": "tiktokhd-25f45",
     "public": "dist",
@@ -18,13 +7,31 @@
       "**/.*",
       "**/node_modules/**"
     ],
-
-    "rewrites": [
+    "headers": [
       {
-        "source": "/api/**",
-        "function": "proxy",
-        "region": "us-central1"
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=31536000, immutable"
+          }
+        ]
       },
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Frame-Options",
+            "value": "SAMEORIGIN"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
       {
         "source": "/blog/**",
         "destination": "/index.html"
