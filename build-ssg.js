@@ -64,6 +64,41 @@ const CANONICAL_ROUTES = [
 
 try {
   const blogs = JSON.parse(fs.readFileSync(path.join(__dirname, 'src/blog-data.json'), 'utf-8'));
+  
+  // Assign rich HTML index to /blog/
+  const blogRoute = CANONICAL_ROUTES.find(r => r.path === '/blog/');
+  if (blogRoute) {
+    blogRoute.content = `
+    <div class="py-16 max-w-6xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <span class="text-cyan-400 font-extrabold uppercase tracking-widest text-xs bg-cyan-950/60 border border-cyan-800/80 px-4 py-1.5 rounded-full">Knowledge Base & Pillar Guides</span>
+        <h1 class="text-4xl md:text-6xl font-black text-white mt-4 tracking-tight">The Universal Media Engineering Library</h1>
+        <p class="text-zinc-400 mt-4 max-w-2xl mx-auto text-base">Master video stream extraction, 160k audio transcoding, watermark eradication, and competitor technical comparisons across 132 authoritative guides.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        ${blogs.map(b => `
+          <article class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-6 hover:border-cyan-500/50 transition-all flex flex-col justify-between group">
+            <div>
+              <div class="flex items-center justify-between gap-2 mb-3">
+                <span class="text-[10px] font-extrabold text-cyan-400 bg-cyan-950/80 border border-cyan-800/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">${b.category || 'Guides'}</span>
+                <span class="text-xs text-zinc-500 font-medium">${b.readTime || '15 min read'}</span>
+              </div>
+              <h2 class="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 mb-2 leading-snug">
+                <a href="/blog/${b.slug}/">${b.title}</a>
+              </h2>
+              <p class="text-sm text-zinc-400 line-clamp-3 mb-4 leading-relaxed">${b.excerpt}</p>
+            </div>
+            <div class="pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-semibold">
+              <span class="text-zinc-500">${b.date}</span>
+              <a href="/blog/${b.slug}/" class="text-cyan-400 hover:text-white transition-colors inline-flex items-center gap-1">Read Guide →</a>
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+    `;
+  }
+
   for (const blog of blogs) {
     CANONICAL_ROUTES.push({
       path: "/blog/" + blog.slug + "/",
@@ -120,6 +155,19 @@ function processPages() {
 
     let pageHtml = baseHtml;
     
+    // Clean out base template SEO tags to prevent duplicate meta / canonical issues
+    pageHtml = pageHtml.replace(/<title>.*?<\/title>/is, '');
+    pageHtml = pageHtml.replace(/<meta\s+name="description"\s+content=".*?"\s*\/?>/gis, '');
+    pageHtml = pageHtml.replace(/<link\s+rel="canonical"\s+href=".*?"\s*\/?>/gis, '');
+    pageHtml = pageHtml.replace(/<meta\s+property="og:.*?"\s+content=".*?"\s*\/?>/gis, '');
+    pageHtml = pageHtml.replace(/<meta\s+(?:name|property)="twitter:.*?"\s+content=".*?"\s*\/?>/gis, '');
+
+    // For non-home pages, remove default root schema
+    if (route.path !== '/') {
+      pageHtml = pageHtml.replace(/<script type="application\/ld\+json">\s*\{\s*"@context":\s*"https:\/\/schema\.org",\s*"@type":\s*"WebSite"[\s\S]*?<\/script>/gis, '');
+      pageHtml = pageHtml.replace(/<script type="application\/ld\+json">\s*\{\s*"@context":\s*"https:\/\/schema\.org",\s*"@type":\s*"SoftwareApplication"[\s\S]*?<\/script>/gis, '');
+    }
+
     // Inject custom meta tags per route
     const canonical = `${BASE_URL}${route.path}`;
     const headInjection = `
@@ -129,15 +177,17 @@ function processPages() {
     <meta property="og:title" content="${route.title}">
     <meta property="og:description" content="${route.desc}">
     <meta property="og:url" content="${canonical}">
+    <meta property="og:type" content="${route.path.startsWith('/blog/') && route.path !== '/blog/' ? 'article' : 'website'}">
+    <meta property="og:image" content="${BASE_URL}/og-image.png">
+    <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:title" content="${route.title}">
     <meta property="twitter:description" content="${route.desc}">
+    <meta property="twitter:image" content="${BASE_URL}/og-image.png">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
-    <meta name="google-adsense-account" content="ca-pub-4157219900484080">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4157219900484080" crossorigin="anonymous"></script>
     `;
 
-    // Replace title and inject tags
-    pageHtml = pageHtml.replace(/<title>.*?<\/title>/s, headInjection);
+    // Inject head tags right after charset / viewport
+    pageHtml = pageHtml.replace(/(<meta\s+name="viewport"[^>]*>)/i, `$1\n${headInjection}`);
     
     // Inject Schema if homepage
     if (route.path === '/') {
@@ -168,41 +218,28 @@ function processPages() {
     
     // Inject article content into <main> if provided (for SEO indexing)
     if (route.content) {
-        pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n<article class="prose prose-invert max-w-3xl mx-auto py-12 px-6">\n<h1>${route.title}</h1>\n${route.content}\n</article>\n</main>`);
-        
-        if (route.path.startsWith('/blog/')) {
-            const blogSchema = `
+        if (route.path === '/blog/') {
+            pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n${route.content}\n</main>`);
+            const collectionSchema = `
             <script type="application/ld+json">
             {
               "@context": "https://schema.org",
-              "@type": "BlogPosting",
-              "headline": "${route.title}",
-              "image": "${route.thumbnail || 'https://tikhd.app/og-image.png'}",
-              "author": {
-                "@type": "Organization",
-                "name": "TIKHD"
-              },
-              "publisher": {
-                "@type": "Organization",
-                "name": "TIKHD",
-                "logo": {
-                  "@type": "ImageObject",
-                  "url": "https://tikhd.app/favicon-96x96.png"
-                }
-              },
-              "datePublished": "${new Date().toISOString()}",
-              "dateModified": "${new Date().toISOString()}"
+              "@type": "CollectionPage",
+              "name": "TIKHD Media Engineering Library & Guides",
+              "description": "Comprehensive knowledge base of 132 guides covering video stream extraction, watermark removal, audio fidelity, and competitor comparisons.",
+              "url": "https://tikhd.app/blog/"
             }
             </script>
-            ${route.thumbnail ? `<link rel="preload" as="image" href="${route.thumbnail}">` : ''}
             `;
-            pageHtml = pageHtml.replace('</head>', blogSchema + '\n</head>');
+            pageHtml = pageHtml.replace('</head>', collectionSchema + '\n</head>');
+        } else {
+            pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n<article class="prose prose-invert max-w-4xl mx-auto py-12 px-6">\n${route.content}\n</article>\n</main>`);
         }
     }
 
     fs.writeFileSync(path.join(routeDir, 'index.html'), pageHtml);
-    console.log(`[Success] Generated ${route.path}index.html`);
   }
+  console.log(`[Success] Prerendered ${CANONICAL_ROUTES.length} physical HTML routes in dist/`);
 }
 
 // Generate SSG pages

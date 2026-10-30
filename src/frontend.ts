@@ -358,7 +358,7 @@ function renderBlogIndex() {
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
           ${(blogPosts as any as BlogPost[]).map(post => `
-            <a href="/blog/${post.slug}" class="bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden hover:border-cyan-500/40 transition-all group flex flex-col" data-nav-link>
+            <a href="/blog/${post.slug}/" class="bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden hover:border-cyan-500/40 transition-all group flex flex-col">
               <div class="h-48 overflow-hidden relative">
                  <img src="${post.thumbnail}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${post.title}">
                  <div class="absolute top-4 left-4 bg-cyan-500 text-black text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest">${post.category}</div>
@@ -389,7 +389,12 @@ function renderBlogIndex() {
 
 function renderBlogPost(slug: string) {
   const post = blogPosts.find(p => p.slug === slug);
-  if (!post) return (window.location.href = "/blog");
+  if (!post) return (window.location.href = "/blog/");
+
+  if (!post.content) {
+    window.location.href = `/blog/${slug}/`;
+    return;
+  }
 
   setMetadata(post.metaTitle, post.metaDescription);
   mainContent.innerHTML = `
