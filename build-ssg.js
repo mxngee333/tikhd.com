@@ -77,20 +77,27 @@ try {
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         ${blogs.map(b => `
-          <article class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-6 hover:border-cyan-500/50 transition-all flex flex-col justify-between group">
-            <div>
-              <div class="flex items-center justify-between gap-2 mb-3">
-                <span class="text-[10px] font-extrabold text-cyan-400 bg-cyan-950/80 border border-cyan-800/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">${b.category || 'Guides'}</span>
-                <span class="text-xs text-zinc-500 font-medium">${b.readTime || '15 min read'}</span>
-              </div>
-              <h2 class="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 mb-2 leading-snug">
-                <a href="/blog/${b.slug}/">${b.title}</a>
-              </h2>
-              <p class="text-sm text-zinc-400 line-clamp-3 mb-4 leading-relaxed">${b.excerpt}</p>
+          <article class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl overflow-hidden hover:border-cyan-500/50 transition-all flex flex-col justify-between group">
+            <div class="h-44 overflow-hidden relative bg-zinc-950 border-b border-zinc-800/60">
+              <a href="/blog/${b.slug}/">
+                <img src="${b.thumbnail || `/thumbnails/${b.slug}.svg`}" alt="${b.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/default.svg';" />
+              </a>
+              <span class="absolute top-3 left-3 text-[10px] font-extrabold text-black bg-cyan-400 px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">${b.category || 'Guides'}</span>
             </div>
-            <div class="pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-semibold">
-              <span class="text-zinc-500">${b.date}</span>
-              <a href="/blog/${b.slug}/" class="text-cyan-400 hover:text-white transition-colors inline-flex items-center gap-1">Read Guide →</a>
+            <div class="p-6 flex-1 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-3">
+                  <span class="text-xs text-zinc-500 font-medium">${b.readTime || '15 min read'}</span>
+                  <span class="text-xs text-zinc-500 font-medium">${b.date}</span>
+                </div>
+                <h2 class="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 mb-2 leading-snug">
+                  <a href="/blog/${b.slug}/">${b.title}</a>
+                </h2>
+                <p class="text-sm text-zinc-400 line-clamp-3 mb-4 leading-relaxed">${b.excerpt}</p>
+              </div>
+              <div class="pt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-semibold">
+                <a href="/blog/${b.slug}/" class="text-cyan-400 hover:text-white transition-colors inline-flex items-center gap-1">Read Guide →</a>
+              </div>
             </div>
           </article>
         `).join('')}
@@ -170,6 +177,7 @@ function processPages() {
 
     // Inject custom meta tags per route
     const canonical = `${BASE_URL}${route.path}`;
+    const ogImg = route.thumbnail ? `${BASE_URL}${route.thumbnail}` : `${BASE_URL}/og-image.png`;
     const headInjection = `
     <title>${route.title}</title>
     <meta name="description" content="${route.desc}">
@@ -178,11 +186,11 @@ function processPages() {
     <meta property="og:description" content="${route.desc}">
     <meta property="og:url" content="${canonical}">
     <meta property="og:type" content="${route.path.startsWith('/blog/') && route.path !== '/blog/' ? 'article' : 'website'}">
-    <meta property="og:image" content="${BASE_URL}/og-image.png">
+    <meta property="og:image" content="${ogImg}">
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:title" content="${route.title}">
     <meta property="twitter:description" content="${route.desc}">
-    <meta property="twitter:image" content="${BASE_URL}/og-image.png">
+    <meta property="twitter:image" content="${ogImg}">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
     `;
 
@@ -233,7 +241,8 @@ function processPages() {
             `;
             pageHtml = pageHtml.replace('</head>', collectionSchema + '\n</head>');
         } else {
-            pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n<article class="prose prose-invert max-w-4xl mx-auto py-12 px-6">\n${route.content}\n</article>\n</main>`);
+            const articleThumb = route.thumbnail ? `<div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800 bg-zinc-950"><img src="${route.thumbnail}" alt="${route.title}" class="w-full h-auto object-cover" /></div>` : '';
+            pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n<article class="prose prose-invert max-w-4xl mx-auto py-12 px-6">\n${articleThumb}\n${route.content}\n</article>\n</main>`);
         }
     }
 

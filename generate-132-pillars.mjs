@@ -375,7 +375,7 @@ function generateArticle(spec, index) {
     slug: slug,
     title: title,
     excerpt: `In-depth technical breakdown and guide on ${focusTopic}. Discover how modern cloud edge extraction outperforms legacy tools like ${competitor}.`,
-    thumbnail: '/og-image.png',
+    thumbnail: `/thumbnails/${slug}.svg`,
     date: publishDate,
     readTime: readingTime,
     author: author,

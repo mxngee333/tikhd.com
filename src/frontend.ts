@@ -359,9 +359,9 @@ function renderBlogIndex() {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
           ${(blogPosts as any as BlogPost[]).map(post => `
             <a href="/blog/${post.slug}/" class="bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden hover:border-cyan-500/40 transition-all group flex flex-col">
-              <div class="h-48 overflow-hidden relative">
-                 <img src="${post.thumbnail}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${post.title}">
-                 <div class="absolute top-4 left-4 bg-cyan-500 text-black text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest">${post.category}</div>
+              <div class="h-48 overflow-hidden relative bg-zinc-950 border-b border-zinc-800/60">
+                 <img src="${post.thumbnail || `/thumbnails/${post.slug}.svg`}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${post.title}" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/default.svg'">
+                 <div class="absolute top-4 left-4 bg-cyan-500 text-black text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest shadow-md">${post.category}</div>
               </div>
               <div class="p-6 flex-1 flex flex-col justify-between">
                 <div>
@@ -413,8 +413,8 @@ function renderBlogPost(slug: string) {
             <span class="text-cyan-400">${post.readTime}</span>
           </div>
         </div>
-        <div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800">
-          <img src="${post.thumbnail}" class="w-full h-auto" alt="${post.title}">
+        <div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800 bg-zinc-950">
+          <img src="${post.thumbnail || `/thumbnails/${post.slug}.svg`}" class="w-full h-auto object-cover" alt="${post.title}" loading="eager" onerror="this.onerror=null; this.src='/thumbnails/default.svg'">
         </div>
         <div class="prose prose-invert max-w-none text-zinc-300 text-base md:text-lg leading-relaxed space-y-8">
           ${post.content}
