@@ -10,6 +10,8 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import axios from "axios";
+import https from "https";
+import zlib from "zlib";
 import * as cheerio from "cheerio";
 import youtubedl from "youtube-dl-exec";
 
@@ -442,71 +444,97 @@ function streamMediaWithFallback(
 
 // Native TikTok / Douyin Scraping Engine
 async function scrapeTikTokFast(url: string) {
-  const response = await axios.get(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Referer": "https://www.tiktok.com/",
-    },
-    maxRedirects: 10,
-    timeout: 10000,
-  });
+  let itemId = (url.match(/\/(?:video|photo|v)\/(\d+)/) || url.match(/item_id=(\d+)/) || [])[1];
 
-  const redirectedUrl = response.request?.res?.responseUrl || url;
-  const finalUrl = redirectedUrl.split("?")[0];
-  const itemIdMatch = finalUrl.match(/\/(?:video|photo|v)\/(\d+)/) || finalUrl.match(/item_id=(\d+)/);
-  const itemId = itemIdMatch ? itemIdMatch[1] : null;
-  const isDouyin = finalUrl.includes("douyin.com");
+  if (!itemId) {
+    try {
+      const oembed = await axios.get(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`, { timeout: 5000 });
+      itemId = oembed.data?.embed_product_id;
+    } catch (e) {}
+  }
 
-  // Attempt internal mobile API
+  if (!itemId) {
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://www.tiktok.com/",
+        },
+        maxRedirects: 10,
+        timeout: 6000,
+      });
+      const redirectedUrl = response.request?.res?.responseUrl || url;
+      const finalUrl = redirectedUrl.split("?")[0];
+      const match = finalUrl.match(/\/(?:video|photo|v)\/(\d+)/) || finalUrl.match(/item_id=(\d+)/);
+      if (match) itemId = match[1];
+    } catch (e) {}
+  }
+
+  // Multi-host internal mobile API with gzip decompression
   if (itemId) {
-    const endpoints = isDouyin
-      ? [`https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${itemId}`]
-      : [
-          `https://api16-normal-c-useast1a.tiktokv.com/media/api/item/detail/?item_id=${itemId}`,
-          `https://api22-normal-c-alisg.tiktokv.com/aweme/v1/feed/?aweme_id=${itemId}`
-        ];
-    const userAgents = [
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/21A329 TikTok 31.5.0",
-      "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    const hosts = [
+      "api16-core-c-useast1a.tiktokv.com",
+      "api19-core-c-useast1a.tiktokv.com",
+      "api.tiktokv.com"
     ];
 
-    for (const apiEndpoint of endpoints) {
+    for (const h of hosts) {
       try {
-        const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
-        const apiResponse = await axios.get(apiEndpoint, {
-          headers: { "User-Agent": randomUA },
-          timeout: 5000,
+        const item: any = await new Promise((resolve, reject) => {
+          https.get(`https://${h}/aweme/v1/feed/?aweme_id=${itemId}`, {
+            headers: {
+              "User-Agent": "com.zhiliaoapp.musically/2022600030 (Linux; U; Android 7.1.2; es_ES; SM-G988N; Build/NRD90M;tt-ok/3.12.13.1)",
+              "Accept-Encoding": "gzip, deflate"
+            },
+            timeout: 6000
+          }, res => {
+            let stream: any = res;
+            if (res.headers["content-encoding"] === "gzip") {
+              stream = res.pipe(zlib.createGunzip());
+            } else if (res.headers["content-encoding"] === "deflate") {
+              stream = res.pipe(zlib.createInflate());
+            }
+            const chunks: Buffer[] = [];
+            stream.on("data", (c: Buffer) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+            stream.on("end", () => {
+              try {
+                const raw = Buffer.concat(chunks).toString("utf8");
+                const j = JSON.parse(raw);
+                resolve(j.aweme_list?.[0]);
+              } catch (err) {
+                reject(err);
+              }
+            });
+            stream.on("error", reject);
+          }).on("error", reject);
         });
 
-        const itemData = isDouyin
-          ? apiResponse.data?.aweme_detail
-          : (apiResponse.data?.item_list?.[0] || apiResponse.data?.aweme_list?.[0]);
-
-        if (itemData) {
-          const videoUrl = itemData.video?.play_addr?.url_list?.[0] || "";
+        if (item) {
+          const videoUrl = item.video?.play_addr?.url_list?.[0] || "";
           return {
-            title: itemData.desc || itemData.text || "TikTok Video",
-            author: itemData.author?.nickname || "unknown",
-            thumbnail: itemData.video?.cover?.url_list?.[0] || "",
+            title: item.desc || "TikTok Video",
+            author: item.author?.nickname || item.author?.unique_id || "@creator",
+            thumbnail: item.video?.cover?.url_list?.[0] || "",
             downloadUrl: videoUrl,
-            duration: itemData.video?.duration || 0,
+            duration: Math.round((item.duration || 0) / 1000),
             stats: {
-              likes: itemData.statistics?.digg_count || 0,
-              comments: itemData.statistics?.comment_count || 0,
-              shares: itemData.statistics?.share_count || 0
+              likes: item.statistics?.digg_count || 0,
+              comments: item.statistics?.comment_count || 0,
+              shares: item.statistics?.share_count || 0
             }
           };
         }
-      } catch (e) {}
+      } catch (err: any) {
+        console.warn(`[TikTok Fast] Host ${h} note:`, err.message);
+      }
     }
   }
 
   // TikWM fallback
   try {
-    const tikwmUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(finalUrl)}`;
+    const tikwmUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
     const twResponse = await axios.get(tikwmUrl, {
       timeout: 8000,
       headers: {
@@ -531,26 +559,6 @@ async function scrapeTikTokFast(url: string) {
       };
     }
   } catch (e) {}
-
-  // HTML scraping fallback
-  const $ = cheerio.load(response.data);
-  const scriptData = $("#__UNIVERSAL_DATA_FOR_REHYDRATION__").text();
-  if (scriptData) {
-    try {
-      const json = JSON.parse(scriptData);
-      const videoData = json["__DEFAULT_SCOPE__"]?.["webapp.video-detail"]?.["itemInfo"]?.["itemStruct"] ||
-                       json["__DEFAULT_SCOPE__"]?.["webapp.video-detail"]?.["shareMeta"];
-      if (videoData) {
-        return {
-          title: videoData.desc || videoData.title || "TikTok Video",
-          author: videoData.author?.nickname || videoData.authorName || "@user",
-          thumbnail: videoData.video?.cover || videoData.imageMeta?.url || "",
-          downloadUrl: videoData.video?.playAddr || "",
-          stats: videoData.stats || {}
-        };
-      }
-    } catch (e) {}
-  }
 
   return null;
 }

@@ -80,7 +80,7 @@ try {
           <article class="bg-zinc-900/60 border border-zinc-800/80 rounded-2xl overflow-hidden hover:border-cyan-500/50 transition-all flex flex-col justify-between group">
             <div class="h-44 overflow-hidden relative bg-zinc-950 border-b border-zinc-800/60">
               <a href="/blog/${b.slug}/">
-                <img src="${b.thumbnail || `/thumbnails/${b.slug}.svg`}" alt="${b.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/default.svg';" />
+                <img src="${b.thumbnail || `/thumbnails/${b.slug}.webp`}" alt="${b.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/${b.slug}.png';" />
               </a>
               <span class="absolute top-3 left-3 text-[10px] font-extrabold text-black bg-cyan-400 px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">${b.category || 'Guides'}</span>
             </div>
@@ -177,7 +177,7 @@ function processPages() {
 
     // Inject custom meta tags per route
     const canonical = `${BASE_URL}${route.path}`;
-    const ogImg = route.thumbnail ? `${BASE_URL}${route.thumbnail}` : `${BASE_URL}/og-image.png`;
+    const ogImg = route.thumbnail ? `${BASE_URL}${route.thumbnail.replace(/\.webp$/, '.png')}` : `${BASE_URL}/og-image.png`;
     const headInjection = `
     <title>${route.title}</title>
     <meta name="description" content="${route.desc}">
@@ -241,7 +241,7 @@ function processPages() {
             `;
             pageHtml = pageHtml.replace('</head>', collectionSchema + '\n</head>');
         } else {
-            const articleThumb = route.thumbnail ? `<div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800 bg-zinc-950"><img src="${route.thumbnail}" alt="${route.title}" class="w-full h-auto object-cover" /></div>` : '';
+            const articleThumb = route.thumbnail ? `<div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800 bg-zinc-950"><img src="${route.thumbnail}" alt="${route.title}" class="w-full h-auto object-cover" onerror="this.onerror=null; this.src='${route.thumbnail.replace(/\.webp$/, '.png')}';" /></div>` : '';
             pageHtml = pageHtml.replace(/<main id="main-content".*?>.*?<\/main>/s, `<main id="main-content" class="w-full">\n<article class="prose prose-invert max-w-4xl mx-auto py-12 px-6">\n${articleThumb}\n${route.content}\n</article>\n</main>`);
         }
     }

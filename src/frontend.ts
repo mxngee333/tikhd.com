@@ -151,6 +151,89 @@ const getApiBase = (): string => {
   return LIVE_BACKEND_URL;
 };
 
+
+// ============================================================================
+// Toast Notification & Clipboard Engine (VIDOGET Pattern)
+// ============================================================================
+let toastTimer: any = null;
+function showToast(message: string, iconType: "lightning" | "check" | "copy" = "lightning") {
+  const toast = document.getElementById("shareToast");
+  const toastMsg = document.getElementById("toastMessage");
+  const toastIcon = document.getElementById("toastIcon");
+  if (!toast || !toastMsg) return;
+
+  toastMsg.textContent = message;
+  if (toastIcon) {
+    if (iconType === "lightning") {
+      toastIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path>`;
+    } else {
+      toastIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>`;
+    }
+  }
+
+  toast.classList.remove("opacity-0", "pointer-events-none", "translate-y-4");
+  toast.classList.add("opacity-100", "translate-y-0");
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("opacity-100", "translate-y-0");
+    toast.classList.add("opacity-0", "pointer-events-none", "translate-y-4");
+  }, 4000);
+}
+
+async function copyToClipboard(text: string, successToastMsg?: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (successToastMsg) showToast(successToastMsg, "check");
+    return true;
+  } catch (e) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (successToastMsg) showToast(successToastMsg, "check");
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+}
+
+function isValidUrl(string: string): boolean {
+  try {
+    const url = new URL(string.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+}
+
+function cleanMediaUrl(rawUrl: string): string {
+  let url = (rawUrl || "").trim();
+  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    if (url.includes("&")) {
+      url = url.split("&")[0];
+    }
+    const vMatch = url.match(/([?&]v=)([A-Za-z0-9_-]{12})$/);
+    if (vMatch && (vMatch[2].startsWith("-") || vMatch[2].startsWith("_"))) {
+      url = url.replace(vMatch[0], `${vMatch[1]}${vMatch[2].slice(1)}`);
+    }
+  }
+  return url;
+}
+
+function prewarmDownload(url: string, quality = "1080") {
+  try {
+    const base = getApiBase();
+    fetch(`${base}/api/prepare?url=${encodeURIComponent(url)}&quality=${encodeURIComponent(quality)}`).catch(() => {});
+  } catch (e) {}
+}
+
 // ============================================================================
 // State & LocalStorage
 // ============================================================================
@@ -252,7 +335,7 @@ function renderHome() {
         <!-- Input Box -->
         <div class="max-w-3xl mx-auto relative z-10">
           <form id="searchForm" class="p-2 bg-gradient-to-r from-cyan-500/20 via-blue-500/10 to-transparent rounded-[32px] border border-cyan-500/20 shadow-2xl shadow-cyan-500/5">
-            <div class="tikhd-input-container bg-zinc-950/90 border border-zinc-800/80 rounded-[28px] group transition-all duration-300 focus-within:border-cyan-500/50">
+            <div id="linkBarContainer" class="tikhd-input-container bg-zinc-950/90 border border-zinc-800/80 rounded-[28px] group transition-all duration-300 focus-within:border-cyan-500/50 cursor-text" title="Click or step in to auto-paste link from clipboard">
               <div class="flex-1 flex flex-col md:flex-row items-center px-4 md:px-6 py-2 gap-3 min-h-[76px]">
                 <div class="w-full flex-1 flex items-center gap-3">
                   <svg class="w-6 h-6 text-zinc-600 group-focus-within:text-cyan-400 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.826a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101m0 0l1.102-1.101m-.758-4.826V9m3 3H9"></path></svg>
@@ -360,7 +443,7 @@ function renderBlogIndex() {
           ${(blogPosts as any as BlogPost[]).map(post => `
             <a href="/blog/${post.slug}/" class="bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden hover:border-cyan-500/40 transition-all group flex flex-col">
               <div class="h-48 overflow-hidden relative bg-zinc-950 border-b border-zinc-800/60">
-                 <img src="${post.thumbnail || `/thumbnails/${post.slug}.svg`}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${post.title}" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/default.svg'">
+                 <img src="${post.thumbnail || `/thumbnails/${post.slug}.webp`}?v=2" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${post.title}" loading="lazy" onerror="this.onerror=null; this.src='/thumbnails/${post.slug}.png';">
                  <div class="absolute top-4 left-4 bg-cyan-500 text-black text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-widest shadow-md">${post.category}</div>
               </div>
               <div class="p-6 flex-1 flex flex-col justify-between">
@@ -414,7 +497,7 @@ function renderBlogPost(slug: string) {
           </div>
         </div>
         <div class="rounded-3xl overflow-hidden mb-12 shadow-2xl border border-zinc-800 bg-zinc-950">
-          <img src="${post.thumbnail || `/thumbnails/${post.slug}.svg`}" class="w-full h-auto object-cover" alt="${post.title}" loading="eager" onerror="this.onerror=null; this.src='/thumbnails/default.svg'">
+          <img src="${post.thumbnail || `/thumbnails/${post.slug}.webp`}?v=2" class="w-full h-auto object-cover" alt="${post.title}" loading="eager" onerror="this.onerror=null; this.src='/thumbnails/${post.slug}.png';">
         </div>
         <div class="prose prose-invert max-w-none text-zinc-300 text-base md:text-lg leading-relaxed space-y-8">
           ${post.content}
@@ -621,13 +704,50 @@ function attachHomeListeners() {
   const errorMsg = document.getElementById("errorMsg");
   const progressContainer = document.getElementById("progressContainer");
 
+  let isClipboardReading = false;
+  let activeMediaData: MediaAnalysis | null = null;
+
+  // Smart Step-in / Click-in / Focus Auto-Capture (VIDOGET Rule)
+  async function tryAutoCaptureClipboard(source = "step-in") {
+    if (isAnalyzing || isClipboardReading) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) return;
+
+    isClipboardReading = true;
+    try {
+      const raw = await navigator.clipboard.readText();
+      const text = raw ? raw.trim() : "";
+
+      if (text && isValidUrl(text)) {
+        const cleaned = cleanMediaUrl(text);
+        const currentVal = input.value.trim();
+        const alreadyActive = activeMediaData && (activeMediaData.original_url === cleaned || (activeMediaData as any).url === cleaned);
+
+        if (cleaned !== lastAutoCapturedUrl && currentVal !== cleaned && !alreadyActive) {
+          input.value = cleaned;
+          lastAutoCapturedUrl = cleaned;
+          showToast("Link Auto-Captured from Clipboard!", "lightning");
+          performAnalysis(cleaned);
+        }
+      }
+    } catch (err) {
+      // Silently ignore browser permission limits
+    } finally {
+      setTimeout(() => {
+        isClipboardReading = false;
+      }, 600);
+    }
+  }
+
   // Perform Analysis
   const performAnalysis = async (targetUrl?: string) => {
-    const rawUrl = (targetUrl || input.value || "").trim();
+    let rawUrl = (targetUrl || input.value || "").trim();
     if (!rawUrl) {
       alert(translations[currentLang].error_invalid);
       return;
     }
+
+    rawUrl = cleanMediaUrl(rawUrl);
+    input.value = rawUrl;
 
     if (isAnalyzing) return;
     isAnalyzing = true;
@@ -660,6 +780,8 @@ function attachHomeListeners() {
         throw new Error((data as any).error || translations[currentLang].error_generic);
       }
 
+      activeMediaData = data;
+
       // Save to recent downloads
       saveRecentDownload({
         id: crypto.randomUUID?.() || Date.now().toString(),
@@ -669,6 +791,9 @@ function attachHomeListeners() {
         url: rawUrl,
         timestamp: Date.now()
       });
+
+      // Background prewarming for sub-second downloads
+      prewarmDownload(rawUrl, "1080");
 
       renderResultCard(data, rawUrl);
 
@@ -697,6 +822,9 @@ function attachHomeListeners() {
       { format_id: "mp3", ext: "mp3", label: "MP3 Audio (160kbps)" },
       { format_id: "m4a", ext: "m4a", label: "Master Audio (M4A)" }
     ];
+
+    const shareUrl = "https://tikhd.app";
+    const shareText = `Download "${data.title}" in 1080p Full HD video and 160kbps MP3 audio with TIKHD — fast, free, and universal!`;
 
     resultSection.innerHTML = `
       <div class="result-card bg-zinc-900/80 border border-zinc-800 rounded-[32px] p-6 md:p-8 shadow-2xl backdrop-blur-xl">
@@ -773,6 +901,28 @@ function attachHomeListeners() {
               </div>
             </div>
 
+            <!-- Social Share & Caption Copy Bar (VIDOGET Rule) -->
+            <div class="pt-6 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button id="copyCaptionBtn" class="flex-1 sm:flex-initial px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-xl border border-zinc-700 hover:border-cyan-500/40 flex items-center justify-center gap-2 transition-all active:scale-95">
+                  <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                  Copy Caption
+                </button>
+                <button id="copyLinkBtn" class="flex-1 sm:flex-initial px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-xl border border-zinc-700 hover:border-cyan-500/40 flex items-center justify-center gap-2 transition-all active:scale-95">
+                  <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.826a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101m0 0l1.102-1.101m-.758-4.826V9m3 3H9"></path></svg>
+                  Copy Link
+                </button>
+              </div>
+              <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <span class="text-[11px] font-bold text-zinc-500 uppercase tracking-wider mr-1">Share:</span>
+                <a href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-[#1877F2] text-zinc-400 hover:text-white flex items-center justify-center transition-colors text-xs font-bold" title="Share on Facebook">f</a>
+                <a href="https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-black text-zinc-400 hover:text-white flex items-center justify-center transition-colors text-xs font-bold" title="Share on X">𝕏</a>
+                <a href="https://api.whatsapp.com/send?text=${encodeURIComponent(shareText + ' ' + shareUrl)}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-[#25D366] text-zinc-400 hover:text-white flex items-center justify-center transition-colors text-xs font-bold" title="Share on WhatsApp">W</a>
+                <a href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-[#229ED9] text-zinc-400 hover:text-white flex items-center justify-center transition-colors text-xs font-bold" title="Share on Telegram">T</a>
+                <a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener noreferrer" class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-[#0A66C2] text-zinc-400 hover:text-white flex items-center justify-center transition-colors text-xs font-bold" title="Share on LinkedIn">in</a>
+              </div>
+            </div>
+
             <!-- Reset Button -->
             <button id="resetBtn" class="w-full py-3.5 bg-zinc-950 hover:bg-zinc-800 text-zinc-400 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border border-zinc-800 transition-colors">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -785,6 +935,16 @@ function attachHomeListeners() {
 
     resultSection.classList.remove("hidden");
     resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Copy Caption Listener
+    document.getElementById("copyCaptionBtn")?.addEventListener("click", () => {
+      copyToClipboard(data.title, "Caption Copied to Clipboard!");
+    });
+
+    // Copy Link Listener
+    document.getElementById("copyLinkBtn")?.addEventListener("click", () => {
+      copyToClipboard(rawUrl, "Link Copied to Clipboard!");
+    });
 
     // TikTok Direct Download Button Listener
     const tiktokDirectBtn = document.getElementById("tiktokDirectBtn");
@@ -885,29 +1045,77 @@ function attachHomeListeners() {
     document.body.removeChild(link);
   }
 
-  // Smart Clipboard Paste & Capture
-  const handlePasteCapture = async (triggerDownload = true) => {
+  // --- Step-in / Click-in / Focus Listeners ---
+  input.addEventListener("focus", () => tryAutoCaptureClipboard("focus"));
+  input.addEventListener("click", () => tryAutoCaptureClipboard("click"));
+  input.addEventListener("pointerdown", () => tryAutoCaptureClipboard("pointerdown"));
+
+  // Click on container wrapper also focuses input and auto-captures
+  const linkBarContainer = document.getElementById("linkBarContainer") || input.closest(".tikhd-input-container");
+  if (linkBarContainer) {
+    linkBarContainer.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("#pasteBtn")) return;
+      input.focus();
+      tryAutoCaptureClipboard("container-click");
+    });
+  }
+
+  // Auto-capture when switching back to tab if input is active
+  window.addEventListener("focus", () => {
+    if (document.activeElement === input) {
+      tryAutoCaptureClipboard("window-focus");
+    }
+  });
+
+  // Enter key listener
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      performAnalysis();
+    }
+  });
+
+  // Smart Auto-Analyze immediately when a link is pasted via keyboard or right-click
+  input.addEventListener("paste", (e) => {
+    const pastedText = (e.clipboardData || (window as any).clipboardData)?.getData("text");
+    if (pastedText && isValidUrl(pastedText)) {
+      const cleaned = cleanMediaUrl(pastedText);
+      input.value = cleaned;
+      lastAutoCapturedUrl = cleaned;
+      e.preventDefault();
+      performAnalysis(cleaned);
+    }
+  });
+
+  // Smart Auto-Analyze when URL is dragged and dropped into the input
+  input.addEventListener("drop", (e) => {
+    const droppedText = e.dataTransfer?.getData("text");
+    if (droppedText && isValidUrl(droppedText)) {
+      const cleaned = cleanMediaUrl(droppedText);
+      input.value = cleaned;
+      lastAutoCapturedUrl = cleaned;
+      e.preventDefault();
+      performAnalysis(cleaned);
+    }
+  });
+
+  // Clipboard paste button: Auto-pastes and instantly triggers analysis
+  pasteBtn?.addEventListener("click", async (e) => {
+    e.stopPropagation();
     try {
       const text = await navigator.clipboard.readText();
-      const clean = (text || "").trim();
-      if (clean && clean !== lastAutoCapturedUrl && /^https?:\/\//i.test(clean)) {
-        input.value = clean;
-        lastAutoCapturedUrl = clean;
-        if (triggerDownload) {
-          performAnalysis(clean);
-        }
-      } else if (clean && !clean.startsWith("http")) {
-        alert("Clipboard content does not appear to be a URL.");
+      if (text && isValidUrl(text)) {
+        const cleaned = cleanMediaUrl(text);
+        input.value = cleaned;
+        lastAutoCapturedUrl = cleaned;
+        showToast("Link Auto-Captured from Clipboard!", "lightning");
+        performAnalysis(cleaned);
+        return;
       }
-    } catch (err) {
-      if (triggerDownload) {
-        // Fallback: if clipboard read permission is blocked, focus input
-        input.focus();
-      }
-    }
-  };
-
-  pasteBtn?.addEventListener("click", () => handlePasteCapture(true));
+    } catch (err) {}
+    // Fallback: analyze current input value if clipboard read fails
+    performAnalysis();
+  });
 
   searchForm?.addEventListener("submit", (e) => {
     e.preventDefault();
